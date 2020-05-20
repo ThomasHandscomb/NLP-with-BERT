@@ -292,7 +292,121 @@ print('Final test set accuracy: {:4f}'.format(results[1]))
 #~~~~~~~~~~~~~~~~~~~~~~
 # Using a Random Forest
 #~~~~~~~~~~~~~~~~~~~~~~
+from collections import Counter
+from datetime import datetime
+
+import pandas as pd
+import numpy as np
+
 from sklearn.ensemble import RandomForestClassifier
+from catboost import CatBoostClassifier, Pool, cv
+from sklearn.model_selection import train_test_split
+
+from sklearn import metrics
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+from sklearn.model_selection import RandomizedSearchCV
+
+from sklearn.inspection import partial_dependence
+from sklearn.inspection import plot_partial_dependence
+
+import pandas_profiling as profiler
+import shap
+import lime
+import lime.lime_tabular
+import matplotlib.pyplot as plt
+from pprint import pprint
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+%matplotlib inline
+
+
+
+from sklearn.ensemble import RandomForestClassifier
+
+# Hyperparameters
+X_train, X_cv, y_train, y_cv = train_test_split(X_train, y_train, train_size=0.70, random_state=11)
+
+model = CatBoostClassifier(
+    custom_loss=['Logloss'],
+    eval_metric='Precision',
+    random_seed=11,
+    logging_level='Silent',
+    nan_mode='Min')
+
+model.fit(
+    X_train, y_train,
+    #cat_features=cat_features,
+    eval_set=(X_cv, y_cv),
+    #plot=True,
+    use_best_model=True
+)
+
+print("On Training Data")
+print(classification_report(y_train, model.predict(X_train)))
+print("On Test Data")
+print(classification_report(y_test, model.predict(X_test)))
+
+# Random forest
+# define random forest model
+rand_forest_model = RandomForestClassifier(n_estimators=1000, max_depth=8,random_state=11,min_samples_leaf=20)
+rand_forest_model.fit(X_train, y_train)
+
+print("**On Training Data**")
+print(classification_report(y_train, rand_forest_model.predict(X_train)))
+print("**On Test Data**")
+print(classification_report(y_test, rand_forest_model.predict(X_test)))
+
+# Num of trees
+n_estimators = [200,400,600,800,1000,1200,1400]
+# Num of features at every split
+max_features = ['auto', 'sqrt']
+# Maximum tree depth
+max_depth = [int(x) for x in np.linspace(5, 25, num = 5)]
+# Minimum number of samples required to split a node
+min_samples_split = [2, 5, 10, 20]
+# Minimum number of samples required at each leaf node
+min_samples_leaf = [1, 2, 4, 6, 8, 10]
+# Method of selecting samples for training each tree
+bootstrap = [True, False]
+# Out of bag scoring
+oob_score = [True, False]
+
+hyper_param_grid = {'n_estimators': n_estimators,
+               'max_features': max_features,
+               'max_depth': max_depth,
+               'min_samples_split': min_samples_split,
+               'min_samples_leaf': min_samples_leaf,
+               'bootstrap': bootstrap,
+               'oob_score': oob_score}
+
+rf_random = RandomizedSearchCV(estimator = rand_forest_model, param_distributions = hyper_param_grid,
+                               n_iter = 30, cv = 5, verbose=2, random_state=11, n_jobs = -1)
+
+# Fit the random forest model on cross-validation dataset
+rf_random.fit(X_cv, y_cv)
+
+# best parameters from grid-search
+rf_random.best_params_
+
+
+rand_forest_model = RandomForestClassifier(n_estimators = rf_random.best_params_['n_estimators'],
+                                           min_samples_split=rf_random.best_params_['min_samples_split'],
+                                           min_samples_leaf = rf_random.best_params_['min_samples_leaf'],
+                                           max_features = rf_random.best_params_['max_features'],
+                                           max_depth = rf_random.best_params_['max_depth'],
+                                           bootstrap = rf_random.best_params_['bootstrap'],
+                                           oob_score = rf_random.best_params_['oob_score'],
+                                           random_state=11,
+                                           n_jobs=-1)
+rand_forest_model.fit(X_train, y_train)
+
+print("**On Training Data After CV Grid Search**")
+print(classification_report(y_train, rand_forest_model.predict(X_train)))
+print("**On Test Data After CV Grid Search**")
+print(classification_report(y_test, rand_forest_model.predict(X_test)))
+
+
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Using an extreme gradient boosted forest
